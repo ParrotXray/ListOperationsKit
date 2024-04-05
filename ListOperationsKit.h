@@ -381,6 +381,17 @@ public:
         return current->element;
     }
 
+    const T &operator[](int index) const {
+        ChainNode<T> *current = head;
+        for (int i = 0; i < index && current; ++i) {
+            current = current->next;
+        }
+        if (!current) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        return current->element;
+    }
+
     ListOperationsKit<T> &operator=(const ListOperationsKit<T> &rhs) {
         if (this != &rhs) {
             this->clear();
