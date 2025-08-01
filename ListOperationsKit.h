@@ -1,5 +1,5 @@
-#ifndef ListOperationsKit_
-#define ListOperationsKit_
+#ifndef ListOperationsKit_H
+#define ListOperationsKit_H
 
 #include <memory>
 #include <sstream>
@@ -9,15 +9,14 @@
 #include <iterator>
 #include <initializer_list>
 #include <type_traits>
-#include <vector>
 
-template<class T>
+template<typename T>
 class stack {
 public:
     virtual ~stack() = default;
 
-    [[nodiscard]] virtual bool empty() const = 0;
-    [[nodiscard]] virtual size_t size() const = 0;
+    virtual bool empty() const = 0;
+    virtual size_t size() const = 0;
     virtual T& top() = 0;
     virtual const T& top() const = 0;
     virtual void pop() = 0;
@@ -25,7 +24,7 @@ public:
     virtual void push(T&& theElement) = 0;
 };
 
-template<class T>
+template<typename T>
 class queue {
 public:
     virtual ~queue() = default;
@@ -41,7 +40,7 @@ public:
     virtual void push(T&& theElement) = 0;
 };
 
-template<class T>
+template<typename T>
 struct DoublyChainNode {
     T element;
     std::unique_ptr<DoublyChainNode<T>> next;
@@ -62,7 +61,7 @@ struct DoublyChainNode {
         : element(std::move(element)), next(std::move(next)), prev(prev) {}
 };
 
-template<class T>
+template<typename T>
 class ListOperationsKit {
 private:
     std::unique_ptr<DoublyChainNode<T>> head;
@@ -644,7 +643,7 @@ public:
     size_t length() const { return list_size; }
 };
 
-template<class T>
+template<typename T>
 class LinkedStack : public stack<T> {
 private:
     std::unique_ptr<DoublyChainNode<T>> stack_top;
@@ -696,7 +695,7 @@ public:
     }
 };
 
-template<class T>
+template<typename T>
 class LinkedQueue : public queue<T> {
 private:
     std::unique_ptr<DoublyChainNode<T>> queue_front;
@@ -787,4 +786,4 @@ public:
     }
 };
 
-#endif
+#endif // ListOperationsKit_H
