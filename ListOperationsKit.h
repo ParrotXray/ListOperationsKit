@@ -1,9 +1,15 @@
 #ifndef ListOperationsKit_
 #define ListOperationsKit_
 
+#include <memory>
 #include <sstream>
 #include <random>
 #include <unordered_set>
+#include <algorithm>
+#include <iterator>
+#include <initializer_list>
+#include <type_traits>
+#include <vector>
 
 template<class T>
 class stack {
@@ -11,14 +17,12 @@ public:
     virtual ~stack() = default;
 
     [[nodiscard]] virtual bool empty() const = 0;
-
-    [[nodiscard]] virtual int size() const = 0;
-
-    virtual T &top() = 0;
-
+    [[nodiscard]] virtual size_t size() const = 0;
+    virtual T& top() = 0;
+    virtual const T& top() const = 0;
     virtual void pop() = 0;
-
-    virtual void push(const T &theElement) = 0;
+    virtual void push(const T& theElement) = 0;
+    virtual void push(T&& theElement) = 0;
 };
 
 template<class T>
@@ -26,562 +30,761 @@ class queue {
 public:
     virtual ~queue() = default;
 
-    [[nodiscard]] virtual bool empty() const = 0;
-
-    [[nodiscard]] virtual int size() const = 0;
-
-    virtual T &front() = 0;
-
-    virtual T &back() = 0;
-
+    virtual bool empty() const = 0;
+    virtual size_t size() const = 0;
+    virtual T& front() = 0;
+    virtual const T& front() const = 0;
+    virtual T& back() = 0;
+    virtual const T& back() const = 0;
     virtual void pop() = 0;
-
-    virtual void push(const T &theElement) = 0;
+    virtual void push(const T& theElement) = 0;
+    virtual void push(T&& theElement) = 0;
 };
 
 template<class T>
-struct ChainNode {
+struct DoublyChainNode {
     T element;
-    ChainNode<T> *next;
-
-    ChainNode() = default;
-
-    explicit ChainNode(const T &element) {
-        this->element = element;
-    }
-
-    ChainNode(const T &element, ChainNode<T> *next) {
-        this->element = element;
-        this->next = next;
-    }
+    std::unique_ptr<DoublyChainNode<T>> next;
+    DoublyChainNode<T>* prev;
+    
+    DoublyChainNode() : prev(nullptr) {}
+    
+    explicit DoublyChainNode(const T& element) 
+        : element(element), prev(nullptr) {}
+    
+    explicit DoublyChainNode(T&& element) 
+        : element(std::move(element)), prev(nullptr) {}
+    
+    DoublyChainNode(const T& element, std::unique_ptr<DoublyChainNode<T>> next, DoublyChainNode<T>* prev = nullptr)
+        : element(element), next(std::move(next)), prev(prev) {}
+    
+    DoublyChainNode(T&& element, std::unique_ptr<DoublyChainNode<T>> next, DoublyChainNode<T>* prev = nullptr)
+        : element(std::move(element)), next(std::move(next)), prev(prev) {}
 };
 
 template<class T>
 class ListOperationsKit {
 private:
-    ChainNode<T> *head;
-    ChainNode<T> *tail;
-    int size;
+    std::unique_ptr<DoublyChainNode<T>> head;
+    DoublyChainNode<T>* tail;
+    size_t list_size;
 
 public:
-    ListOperationsKit() {
-        head = tail = NULL;
-        size = 0;
-    }
+    using value_type = T;
+    using size_type = size_t;
+    using difference_type = std::ptrdiff_t;
+    using reference = T&;
+    using const_reference = const T&;
+    using pointer = T*;
+    using const_pointer = const T*;
 
-    ~ListOperationsKit() {
-        while (head != NULL) {
-            ChainNode<T> *next_node = head->next;
-            delete head;
-            head = next_node;
+    class iterator {
+        friend class ListOperationsKit<T>;
+    private:
+        DoublyChainNode<T>* node;
+    public:
+        explicit iterator(DoublyChainNode<T>* n = nullptr) : node(n) {}
+        T& operator*() const { return node->element; }
+        iterator& operator++() { 
+            if (node) node = node->next.get(); 
+            return *this; 
+        }
+        bool operator!=(const iterator& other) const { return node != other.node; }
+    };
+
+    class const_iterator {
+        friend class ListOperationsKit<T>;
+    private:
+        const DoublyChainNode<T>* node;
+    public:
+        explicit const_iterator(const DoublyChainNode<T>* n = nullptr) : node(n) {}
+        const T& operator*() const { return node->element; }
+        const_iterator& operator++() { 
+            if (node) node = node->next.get(); 
+            return *this; 
+        }
+        bool operator!=(const const_iterator& other) const { return node != other.node; }
+    };
+
+    ListOperationsKit() : tail(nullptr), list_size(0) {}
+
+    ListOperationsKit(const ListOperationsKit& other) : tail(nullptr), list_size(0) {
+        for (const auto& item : other) {
+            push_back(item);
         }
     }
 
-    void append(const T &element) {
-        auto *new_node = new ChainNode<T>(element, NULL);
+    ListOperationsKit(ListOperationsKit&& other) noexcept 
+        : head(std::move(other.head)), tail(other.tail), list_size(other.list_size) {
+        other.tail = nullptr;
+        other.list_size = 0;
+    }
 
-        if (size == 0)
-            head = tail = new_node;
-        else {
-            tail = tail->next = new_node;
+    ListOperationsKit(std::initializer_list<T> init) : tail(nullptr), list_size(0) {
+        for (const auto& item : init) {
+            push_back(item);
         }
+    }
 
-        size++;
+    ~ListOperationsKit() = default;
+
+    iterator begin() { return iterator(head.get()); }
+    const_iterator begin() const { return const_iterator(head.get()); }
+    const_iterator cbegin() const { return const_iterator(head.get()); }
+    
+    iterator end() { return iterator(nullptr); }
+    const_iterator end() const { return const_iterator(nullptr); }
+    const_iterator cend() const { return const_iterator(nullptr); }
+
+    bool empty() const noexcept { return list_size == 0; }
+    size_t size() const noexcept { return list_size; }
+    size_t max_size() const noexcept { return std::numeric_limits<size_t>::max(); }
+
+    reference front() {
+        if (empty()) throw std::out_of_range("List is empty");
+        return head->element;
+    }
+
+    const_reference front() const {
+        if (empty()) throw std::out_of_range("List is empty");
+        return head->element;
+    }
+
+    reference back() {
+        if (empty()) throw std::out_of_range("List is empty");
+        return tail->element;
+    }
+
+    const_reference back() const {
+        if (empty()) throw std::out_of_range("List is empty");
+        return tail->element;
+    }
+
+    void clear() noexcept {
+        head.reset();
+        tail = nullptr;
+        list_size = 0;
+    }
+
+    void push_front(const T& value) {
+        auto new_node = std::make_unique<DoublyChainNode<T>>(value);
+        if (empty()) {
+            tail = new_node.get();
+        } else {
+            head->prev = new_node.get();
+            new_node->next = std::move(head);
+        }
+        head = std::move(new_node);
+        ++list_size;
+    }
+
+    void push_front(T&& value) {
+        auto new_node = std::make_unique<DoublyChainNode<T>>(std::move(value));
+        if (empty()) {
+            tail = new_node.get();
+        } else {
+            head->prev = new_node.get();
+            new_node->next = std::move(head);
+        }
+        head = std::move(new_node);
+        ++list_size;
+    }
+
+    void push_back(const T& value) {
+        auto new_node = std::make_unique<DoublyChainNode<T>>(value);
+        if (empty()) {
+            head = std::move(new_node);
+            tail = head.get();
+        } else {
+            new_node->prev = tail;
+            tail->next = std::move(new_node);
+            tail = tail->next.get();
+        }
+        ++list_size;
+    }
+
+    void push_back(T&& value) {
+        auto new_node = std::make_unique<DoublyChainNode<T>>(std::move(value));
+        if (empty()) {
+            head = std::move(new_node);
+            tail = head.get();
+        } else {
+            new_node->prev = tail;
+            tail->next = std::move(new_node);
+            tail = tail->next.get();
+        }
+        ++list_size;
+    }
+
+    void append(const T& element) { 
+        push_back(element); 
+    }
+    
+    void append(T&& element) { 
+        push_back(std::move(element)); 
     }
 
     template<typename... Args>
-    void append(const T &element, Args &&... args) {
-        append(element);
+    void append(const T& element, Args&&... args) {
+        push_back(element);
         append(std::forward<Args>(args)...);
     }
 
-    void random_append(int length, int min = 0, int max = 100) {
+    template<typename... Args>
+    void emplace_back(Args&&... args) {
+        auto new_node = std::make_unique<DoublyChainNode<T>>(T(std::forward<Args>(args)...));
+        if (empty()) {
+            head = std::move(new_node);
+            tail = head.get();
+        } else {
+            new_node->prev = tail;
+            tail->next = std::move(new_node);
+            tail = tail->next.get();
+        }
+        ++list_size;
+    }
+
+    template<typename... Args>
+    void emplace_front(Args&&... args) {
+        auto new_node = std::make_unique<DoublyChainNode<T>>(T(std::forward<Args>(args)...));
+        if (empty()) {
+            tail = new_node.get();
+        } else {
+            head->prev = new_node.get();
+            new_node->next = std::move(head);
+        }
+        head = std::move(new_node);
+        ++list_size;
+    }
+
+    void pop_front() {
+        if (empty()) throw std::out_of_range("List is empty");
+        
+        if (list_size == 1) {
+            head.reset();
+            tail = nullptr;
+        } else {
+            head = std::move(head->next);
+            head->prev = nullptr;
+        }
+        --list_size;
+    }
+
+    void pop_back() {
+        if (empty()) throw std::out_of_range("List is empty");
+        
+        if (list_size == 1) {
+            head.reset();
+            tail = nullptr;
+        } else {
+            tail = tail->prev;
+            tail->next.reset();
+        }
+        --list_size;
+    }
+
+    void insert_at(size_t index, const T& element) {
+        if (index > list_size) throw std::out_of_range("Index out of bounds");
+        
+        if (index == 0) {
+            push_front(element);
+        } else if (index == list_size) {
+            push_back(element);
+        } else {
+            auto new_node = std::make_unique<DoublyChainNode<T>>(element);
+            DoublyChainNode<T>* current = head.get();
+            
+            for (size_t i = 0; i < index; ++i) {
+                current = current->next.get();
+            }
+            
+            DoublyChainNode<T>* prev_node = current->prev;
+            new_node->prev = prev_node;
+            new_node->next = std::move(prev_node->next);
+            new_node->next->prev = new_node.get();
+            prev_node->next = std::move(new_node);
+            
+            ++list_size;
+        }
+    }
+
+    void remove(size_t index) {
+        if (index >= list_size) throw std::out_of_range("Index out of bounds");
+        
+        if (index == 0) {
+            pop_front();
+        } else if (index == list_size - 1) {
+            pop_back();
+        } else {
+            DoublyChainNode<T>* current = head.get();
+            
+            for (size_t i = 0; i < index; ++i) {
+                current = current->next.get();
+            }
+            
+            DoublyChainNode<T>* prev_node = current->prev;
+            DoublyChainNode<T>* next_node = current->next.get();
+            
+            prev_node->next = std::move(current->next);
+            next_node->prev = prev_node;
+            
+            --list_size;
+        }
+    }
+
+    void random_append(size_t length, T min = T{}, T max = T{100}) {
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::uniform_int_distribution<T> dis(min, max);
-
-        std::unordered_set<T> generated;
-
-        for (int i = 0; i < length; ++i) {
-            T value;
-            do {
-                value = dis(gen);
-            } while (generated.find(value) != generated.end());
-
-            append(value);
-            generated.insert(value);
-        }
-    }
-
-    void insert_back(int index, const T &element) {
-        if (index < 0 || index > size) {
-            throw std::out_of_range("Index out of bounds");
-        }
-
-        auto *new_node = new ChainNode<T>(element, NULL);
-
-        if (index == 0) {
-            new_node->next = head;
-            head = new_node;
-            if (size == 0) {
-                tail = new_node;
+        
+        if constexpr (std::is_integral_v<T>) {
+            std::uniform_int_distribution<T> dis(min, max);
+            std::unordered_set<T> generated;
+            
+            for (size_t i = 0; i < length; ++i) {
+                T value;
+                do {
+                    value = dis(gen);
+                } while (generated.find(value) != generated.end());
+                
+                push_back(value);
+                generated.insert(value);
             }
         } else {
-            ChainNode<T> *current = head;
-            for (int i = 0; i < index - 1; ++i) {
-                current = current->next;
+            std::uniform_real_distribution<T> dis(min, max);
+            for (size_t i = 0; i < length; ++i) {
+                push_back(dis(gen));
             }
-
-            new_node->next = current->next;
-            current->next = new_node;
-
-            if (index == size) {
-                tail = new_node;
-            }
-        }
-
-        size++;
-    }
-
-    void concatenate(const ListOperationsKit<T> &other) {
-        ChainNode<T> *other_head = other.head;
-
-        while (other_head != NULL) {
-            append(other_head->element);
-            other_head = other_head->next;
         }
     }
 
-    void reverse() {
-        ChainNode<T> *current = head;
-        ChainNode<T> *prev = NULL;
-        ChainNode<T> *next = NULL;
+    void concatenate(const ListOperationsKit<T>& other) {
+        for (const auto& item : other) {
+            push_back(item);
+        }
+    }
 
-        while (current != NULL) {
-            next = current->next;
-            current->next = prev;
+    void reverse() noexcept {
+        if (list_size <= 1) return;
+        
+        DoublyChainNode<T>* current = head.release();
+        DoublyChainNode<T>* prev = nullptr;
+        
+        tail = current;
+        
+        while (current) {
+            DoublyChainNode<T>* next = current->next.release();
+
+            current->next.reset(prev);
+            current->prev = next;
+            
             prev = current;
             current = next;
         }
 
-        head = prev;
+        head.reset(prev);
     }
 
-    void remove(int index) {
-        if (index < 0 || index >= size) {
-            throw std::out_of_range("Index out of bounds");
+    void sort() {
+        if (list_size <= 1) return;
+        
+        std::vector<T> temp;
+        temp.reserve(list_size);
+
+        for (const auto& item : *this) {
+            temp.push_back(item);
         }
 
-        ChainNode<T> *current = head;
-        ChainNode<T> *prev = NULL;
+        std::sort(temp.begin(), temp.end());
 
-        for (int i = 0; i < index; ++i) {
-            prev = current;
-            current = current->next;
+        auto it = begin();
+        for (const auto& item : temp) {
+            *it = item;
+            ++it;
         }
+    }
 
-        if (prev == NULL) {
-            head = current->next;
+    template<typename Compare>
+    void sort(Compare comp) {
+        if (list_size <= 1) return;
+        
+        std::vector<T> temp;
+        temp.reserve(list_size);
+
+        for (const auto& item : *this) {
+            temp.push_back(item);
+        }
+        
+        std::sort(temp.begin(), temp.end(), comp);
+
+        auto it = begin();
+        for (const auto& item : temp) {
+            *it = item;
+            ++it;
+        }
+    }
+
+    void sort(bool descending) {
+        if (descending) {
+            sort(std::greater<T>());
         } else {
-            prev->next = current->next;
-            if (prev->next == NULL) {
-                tail = prev;
-            }
-        }
-
-        delete current;
-        size--;
-    }
-
-    void sort(bool descending = false) {
-        if (size > 1) {
-            bool swapped;
-
-            do {
-                swapped = false;
-                ChainNode<T> *current = head;
-                ChainNode<T> *prev = NULL;
-
-                while (current->next != NULL) {
-                    if ((!descending && current->element > current->next->element) ||
-                        (descending && current->element < current->next->element)) {
-                        std::swap(current->element, current->next->element);
-                        swapped = true;
-                    }
-
-                    prev = current;
-                    current = current->next;
-                }
-
-                tail = prev;
-
-            } while (swapped);
+            sort();
         }
     }
 
-    void del() {
-        if (size == 0) {
-            throw std::out_of_range("Cannot delete from an empty list");
-        }
-
-        if (size == 1) {
-            delete head;
-            head = tail = NULL;
-        } else {
-            ChainNode<T> *current = head;
-            while (current->next != tail) {
-                current = current->next;
-            }
-
-            delete tail;
-            tail = current;
-            tail->next = NULL;
-        }
-
-        size--;
-    }
-
-    void swap(int index1, int index2) {
-        if (index1 < 0 || index1 >= size || index2 < 0 || index2 >= size) {
+    void swap(size_t index1, size_t index2) {
+        if (index1 >= list_size || index2 >= list_size) {
             throw std::out_of_range("Index out of bounds");
         }
-
-        ChainNode<T> *node1 = head;
-        ChainNode<T> *node2 = head;
-
-        for (int i = 0; i < index1; ++i) {
-            node1 = node1->next;
-        }
-
-        for (int i = 0; i < index2; ++i) {
-            node2 = node2->next;
-        }
-
-        std::swap(node1->element, node2->element);
+        
+        if (index1 == index2) return;
+        
+        T temp = get(index1);
+        set(index1, get(index2));
+        set(index2, temp);
     }
 
-    void set(int index, const T &value) {
-        if (index < 0 || index >= size) {
-            throw std::out_of_range("Index out of bounds");
-        }
-
-        ChainNode<T> *current = head;
-        for (int i = 0; i < index; ++i) {
-            current = current->next;
+    void set(size_t index, const T& value) {
+        if (index >= list_size) throw std::out_of_range("Index out of bounds");
+        
+        DoublyChainNode<T>* current = head.get();
+        for (size_t i = 0; i < index; ++i) {
+            current = current->next.get();
         }
         current->element = value;
     }
 
-    void clear() {
-        ChainNode<T> *current = head;
-        ChainNode<T> *next = NULL;
-
-        while (current != NULL) {
-            next = current->next;
-            delete current;
-            current = next;
+    void set(size_t index, T&& value) {
+        if (index >= list_size) throw std::out_of_range("Index out of bounds");
+        
+        DoublyChainNode<T>* current = head.get();
+        for (size_t i = 0; i < index; ++i) {
+            current = current->next.get();
         }
-
-        head = tail = NULL;
-        size = 0;
+        current->element = std::move(value);
     }
 
-    void print() const {
-        ChainNode<T> *current = head;
-
-        while (current != NULL) {
-            std::cout << current->element << " ";
-            current = current->next;
+    T get(size_t index) const {
+        if (index >= list_size) throw std::out_of_range("Index out of bounds");
+        
+        const DoublyChainNode<T>* current = head.get();
+        for (size_t i = 0; i < index; ++i) {
+            current = current->next.get();
         }
-
-        std::cout << std::endl;
+        return current->element;
     }
 
-    ListOperationsKit<T> slice(int start, int end, int step = 1) {
-        ListOperationsKit<T> result;
-        ChainNode<T> *current = head;
-        int index = 0;
+    T& operator[](size_t index) {
+        DoublyChainNode<T>* current = head.get();
+        for (size_t i = 0; i < index; ++i) {
+            current = current->next.get();
+        }
+        return current->element;
+    }
 
-        while (current != NULL && index <= end) {
-            if (index >= start && (index - start) % step == 0) {
-                result.append(current->element);
+    const T& operator[](size_t index) const {
+        const DoublyChainNode<T>* current = head.get();
+        for (size_t i = 0; i < index; ++i) {
+            current = current->next.get();
+        }
+        return current->element;
+    }
+
+    T operator()(size_t index) const {
+        return get(index);
+    }
+
+    ListOperationsKit& operator=(const ListOperationsKit& rhs) {
+        if (this != &rhs) {
+            clear();
+            for (const auto& item : rhs) {
+                push_back(item);
             }
-
-            current = current->next;
-            ++index;
         }
+        return *this;
+    }
 
+    ListOperationsKit& operator=(ListOperationsKit&& rhs) noexcept {
+        if (this != &rhs) {
+            head = std::move(rhs.head);
+            tail = rhs.tail;
+            list_size = rhs.list_size;
+            rhs.tail = nullptr;
+            rhs.list_size = 0;
+        }
+        return *this;
+    }
+
+    ListOperationsKit& operator=(std::initializer_list<T> init) {
+        clear();
+        for (const auto& item : init) {
+            push_back(item);
+        }
+        return *this;
+    }
+
+    ListOperationsKit slice(size_t start, size_t end, size_t step = 1) const {
+        ListOperationsKit result;
+        if (start >= list_size || step == 0) return result;
+        
+        for (size_t i = start; i < end && i < list_size; i += step) {
+            result.push_back(get(i));
+        }
+        
         return result;
     }
 
-    ListOperationsKit<T> copy() const {
-        ListOperationsKit<T> newList;
-        ChainNode<T> *current = head;
-        while (current) {
-            newList.append(current->element);
-            current = current->next;
-        }
-        return newList;
+    ListOperationsKit copy() const {
+        return ListOperationsKit(*this);
     }
 
-    T count(const T &element) const {
-        int count = 0;
-        ChainNode<T> *current = head;
-
+    size_t count(const T& element) const {
+        size_t cnt = 0;
+        const DoublyChainNode<T>* current = head.get();
         while (current) {
             if (current->element == element) {
-                count++;
+                ++cnt;
             }
-            current = current->next;
+            current = current->next.get();
         }
-
-        return count;
+        return cnt;
     }
 
-    T index(const T &element) const {
-        int idx = 0;
-        ChainNode<T> *current = head;
-
+    size_t index(const T& element) const {
+        const DoublyChainNode<T>* current = head.get();
+        size_t idx = 0;
         while (current) {
             if (current->element == element) {
                 return idx;
             }
-            current = current->next;
+            current = current->next.get();
             ++idx;
         }
-
-        return -1;
+        throw std::out_of_range("Element not found in list");
     }
 
-    T get(int index) const {
-        if (index < 0 || index >= size) {
-            throw std::out_of_range("Index out of bounds");
+    void print() const {
+        for (const auto& item : *this) {
+            std::cout << item << " ";
         }
-
-        ChainNode<T> *current = head;
-        for (int i = 0; i < index; ++i) {
-            current = current->next;
-        }
-
-        return current->element;
+        std::cout << std::endl;
     }
 
-    T operator()(int index) const {
-        return get(index);
+    void print_reverse() const {
+        for (int i = static_cast<int>(list_size) - 1; i >= 0; --i) {
+            std::cout << get(i) << " ";
+        }
+        std::cout << std::endl;
     }
 
-    T &operator[](int index) {
-        ChainNode<T> *current = head;
-        for (int i = 0; i < index && current; ++i) {
-            current = current->next;
-        }
-        if (!current) {
-            throw std::out_of_range("Index out of bounds");
-        }
-        return current->element;
-    }
-
-    const T &operator[](int index) const {
-        ChainNode<T> *current = head;
-        for (int i = 0; i < index && current; ++i) {
-            current = current->next;
-        }
-        if (!current) {
-            throw std::out_of_range("Index out of bounds");
-        }
-        return current->element;
-    }
-
-    ListOperationsKit<T> &operator=(const ListOperationsKit<T> &rhs) {
-        if (this != &rhs) {
-            this->clear();
-            ChainNode<T> *current = rhs.head;
-            while (current != NULL) {
-                this->append(current->element);
-                current = current->next;
-            }
-        }
-        return *this;
-    }
-
-    ListOperationsKit<T> &operator=(const std::initializer_list<T> &values) {
-        this->clear();
-
-        for (const T &value: values) {
-            append(value);
-        }
-
-        return *this;
-    }
-
-    T get_size() const {
-        return size;
-    }
-
-    T length() const {
-        int len = -1;
-        if (head == NULL) {
-            return len;
-        }
-
-        ChainNode<T> *current = head;
-        while (current != NULL) {
-            ++len;
-            current = current->next;
-        }
-        return len;
-    }
-
-    [[nodiscard]] std::string to_string() const {
+    std::string to_string() const {
         std::stringstream ss;
-        ChainNode<T> *current = head;
-        while (current != NULL) {
-            ss << current->element;
-            if (current->next != NULL) {
+        auto it = cbegin();
+        while (it != cend()) {
+            ss << *it;
+            if (++it != cend()) {
                 ss << " ";
             }
-            current = current->next;
         }
         return ss.str();
     }
 
-    friend std::ostream &operator<<(std::ostream &os, const ListOperationsKit<T> &list) {
-        ChainNode<T> *current = list.head;
-        while (current != nullptr) {
-            os << current->element << " ";
-            current = current->next;
+    friend std::ostream& operator<<(std::ostream& os, const ListOperationsKit& list) {
+        for (const auto& item : list) {
+            os << item << " ";
         }
         return os;
     }
+
+    bool operator==(const ListOperationsKit& other) const {
+        if (list_size != other.list_size) return false;
+        
+        const DoublyChainNode<T>* current1 = head.get();
+        const DoublyChainNode<T>* current2 = other.head.get();
+        
+        while (current1 && current2) {
+            if (current1->element != current2->element) return false;
+            current1 = current1->next.get();
+            current2 = current2->next.get();
+        }
+        
+        return true;
+    }
+
+    bool operator!=(const ListOperationsKit& other) const {
+        return !(*this == other);
+    }
+
+    bool operator<(const ListOperationsKit& other) const {
+        const DoublyChainNode<T>* current1 = head.get();
+        const DoublyChainNode<T>* current2 = other.head.get();
+        
+        while (current1 && current2) {
+            if (current1->element < current2->element) return true;
+            if (current2->element < current1->element) return false;
+            current1 = current1->next.get();
+            current2 = current2->next.get();
+        }
+        
+        return !current1 && current2;
+    }
+
+    bool operator<=(const ListOperationsKit& other) const {
+        return !(other < *this);
+    }
+
+    bool operator>(const ListOperationsKit& other) const {
+        return other < *this;
+    }
+
+    bool operator>=(const ListOperationsKit& other) const {
+        return !(*this < other);
+    }
+
+    size_t get_size() const { return list_size; }
+    size_t length() const { return list_size; }
 };
 
 template<class T>
 class LinkedStack : public stack<T> {
 private:
-    ChainNode<T> *stack_top;
-    int stack_size;
+    std::unique_ptr<DoublyChainNode<T>> stack_top;
+    size_t stack_size;
 
 public:
-    explicit LinkedStack() {
-        stack_top = NULL;
-        stack_size = 0;
-    }
+    LinkedStack() : stack_size(0) {}
+    ~LinkedStack() = default;
 
-    ~LinkedStack();
+    bool empty() const override { return stack_size == 0; }
+    size_t size() const override { return stack_size; }
 
-    [[nodiscard]] bool empty() const {
-        return stack_size == 0;
-    }
-
-    [[nodiscard]] int size() const {
-        return stack_size;
-    }
-
-    T &top() {
-        if (stack_size == 0)
-            throw std::runtime_error("Invalid operation on empty stack");
+    T& top() override {
+        if (empty()) throw std::runtime_error("Invalid operation on empty stack");
         return stack_top->element;
     }
 
-    void pop();
+    const T& top() const override {
+        if (empty()) throw std::runtime_error("Invalid operation on empty stack");
+        return stack_top->element;
+    }
 
-    void push(const T &the_element) {
-        stack_top = new ChainNode<T>(the_element, stack_top);
-        stack_size++;
+    void pop() override {
+        if (empty()) throw std::runtime_error("Invalid operation on empty stack");
+        stack_top = std::move(stack_top->next);
+        --stack_size;
+    }
+
+    void push(const T& element) override {
+        auto new_node = std::make_unique<DoublyChainNode<T>>(element);
+        new_node->next = std::move(stack_top);
+        stack_top = std::move(new_node);
+        ++stack_size;
+    }
+
+    void push(T&& element) override {
+        auto new_node = std::make_unique<DoublyChainNode<T>>(std::move(element));
+        new_node->next = std::move(stack_top);
+        stack_top = std::move(new_node);
+        ++stack_size;
+    }
+
+    template<typename... Args>
+    void emplace(Args&&... args) {
+        auto new_node = std::make_unique<DoublyChainNode<T>>(T(std::forward<Args>(args)...));
+        new_node->next = std::move(stack_top);
+        stack_top = std::move(new_node);
+        ++stack_size;
     }
 };
-
-template<class T>
-LinkedStack<T>::~LinkedStack() {
-    while (stack_top != NULL) {
-        ChainNode<T> *next_node = stack_top->next;
-        delete stack_top;
-        stack_top = next_node;
-    }
-}
-
-template<class T>
-void LinkedStack<T>::pop() {
-    if (stack_size == 0)
-        throw std::runtime_error("Invalid operation on empty stack");
-
-    ChainNode<T> *next_node = stack_top->next;
-    delete stack_top;
-    stack_top = next_node;
-    stack_size--;
-}
 
 template<class T>
 class LinkedQueue : public queue<T> {
 private:
-    ChainNode<T> *queue_front;
-    ChainNode<T> *queue_back;
-    int queue_size;
+    std::unique_ptr<DoublyChainNode<T>> queue_front;
+    DoublyChainNode<T>* queue_back;
+    size_t queue_size;
 
 public:
-    explicit LinkedQueue() {
-        queue_front = NULL;
-        queue_size = 0;
-    }
+    LinkedQueue() : queue_back(nullptr), queue_size(0) {}
+    ~LinkedQueue() = default;
 
-    ~LinkedQueue();
+    bool empty() const override { return queue_size == 0; }
+    size_t size() const override { return queue_size; }
 
-    [[nodiscard]] bool empty() const {
-        return queue_size == 0;
-    }
-
-    [[nodiscard]] int size() const {
-        return queue_size;
-    }
-
-    T &front() {
-        if (queue_size == 0)
-            throw std::runtime_error("Invalid operation on empty queue");
+    T& front() override {
+        if (empty()) throw std::runtime_error("Invalid operation on empty queue");
         return queue_front->element;
     }
 
-    T &back() {
-        if (queue_size == 0)
-            throw std::runtime_error("Invalid operation on empty queue");
+    const T& front() const override {
+        if (empty()) throw std::runtime_error("Invalid operation on empty queue");
+        return queue_front->element;
+    }
+
+    T& back() override {
+        if (empty()) throw std::runtime_error("Invalid operation on empty queue");
         return queue_back->element;
     }
 
-    void pop();
-
-    void push(const T &);
-};
-
-template<class T>
-LinkedQueue<T>::~LinkedQueue() {
-    while (queue_front != NULL) {
-        ChainNode<T> *next_node = queue_front->next;
-        delete queue_front;
-        queue_front = next_node;
+    const T& back() const override {
+        if (empty()) throw std::runtime_error("Invalid operation on empty queue");
+        return queue_back->element;
     }
-}
 
-template<class T>
-void LinkedQueue<T>::pop() {
-    if (queue_front == NULL)
-        throw std::runtime_error("Invalid operation on empty queue");
+    void pop() override {
+        if (empty()) throw std::runtime_error("Invalid operation on empty queue");
+        
+        if (queue_size == 1) {
+            queue_front.reset();
+            queue_back = nullptr;
+        } else {
+            queue_front = std::move(queue_front->next);
+            queue_front->prev = nullptr;
+        }
+        --queue_size;
+    }
 
-    ChainNode<T> *next_node = queue_front->next;
-    delete queue_front;
-    queue_front = next_node;
-    queue_size--;
-}
+    void push(const T& element) override {
+        auto new_node = std::make_unique<DoublyChainNode<T>>(element);
+        
+        if (empty()) {
+            queue_back = new_node.get();
+            queue_front = std::move(new_node);
+        } else {
+            new_node->prev = queue_back;
+            queue_back->next = std::move(new_node);
+            queue_back = queue_back->next.get();
+        }
+        ++queue_size;
+    }
 
-template<class T>
-void LinkedQueue<T>::push(const T &the_element) {
-    auto *next_node = new ChainNode<T>(the_element, NULL);
+    void push(T&& element) override {
+        auto new_node = std::make_unique<DoublyChainNode<T>>(std::move(element));
+        
+        if (empty()) {
+            queue_back = new_node.get();
+            queue_front = std::move(new_node);
+        } else {
+            new_node->prev = queue_back;
+            queue_back->next = std::move(new_node);
+            queue_back = queue_back->next.get();
+        }
+        ++queue_size;
+    }
 
-    if (queue_size == 0)
-        queue_front = next_node;
-    else
-        queue_back->next = next_node;
-    queue_back = next_node;
-
-    queue_size++;
-}
+    template<typename... Args>
+    void emplace(Args&&... args) {
+        auto new_node = std::make_unique<DoublyChainNode<T>>(T(std::forward<Args>(args)...));
+        
+        if (empty()) {
+            queue_back = new_node.get();
+            queue_front = std::move(new_node);
+        } else {
+            new_node->prev = queue_back;
+            queue_back->next = std::move(new_node);
+            queue_back = queue_back->next.get();
+        }
+        ++queue_size;
+    }
+};
 
 #endif
